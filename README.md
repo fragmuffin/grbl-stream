@@ -115,7 +115,7 @@ running `grbl-stream --help` displays the help text...
       --keep-open, -o       if set, window won't close when job is done
 
 
-# Raspberry Pi / any remote system
+# Running on remote system (eg: Raspberry Pi)
 
 GRBL streaming will only be successful while the streaming process is allowed to
 remain active (obviously, a program stops when the OS kills it).
