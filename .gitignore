@@ -1,0 +1,9 @@
+# python cache / compilations
+*__pycache__
+*.pyc
+
+# editor backups
+*.swp
+
+# build
+build/*
