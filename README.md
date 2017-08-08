@@ -45,7 +45,7 @@ It starts off in a _jogging_ state with keys:
     ;    - x,y,z: zero individual axis                                            
     ;    - Enter: start streaming gcode                                           
 
-![grbl-stream script while jogging](https://github.com/fragmuffin/grbl-stream/tree/develop/media/jogging.png)
+![grbl-stream script while jogging](media/jogging.png)
 
 Machine's mode is changed to incremental `G91` if jogging is requested, then reverted back to the initial mode when finished.
 
@@ -54,7 +54,7 @@ Machine's mode is changed to incremental `G91` if jogging is requested, then rev
 
 When user presses `[enter]` script switches state to streaming gcode over serial
 
-![grbl-stream script while streaming](https://github.com/fragmuffin/grbl-stream/blob/master/media/streaming.png)
+![grbl-stream script while streaming](media/streaming.png)
 
 in both _jogging_ and _streaming_ states, gcode on screen indicates gcode progress with:
 
