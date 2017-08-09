@@ -19,3 +19,27 @@ __license__ = "GPLv3"
 
 # not text-parsable
 __copyright__ = "Copyright (c) 2017 {0}".format(__author__)
+
+
+__all__ = [
+    # modules
+    'arduino_tools',
+    'settingsfile',
+    'streamer',
+    'widget',
+    'window',
+
+]
+
+# modules
+import arduino_tools
+import settingsfile
+import streamer
+import widget
+import window
+
+# settingsfile
+from config import Config, DEFAULT_SETTINGS
+
+# window
+from window import keypress
