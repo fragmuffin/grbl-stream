@@ -74,45 +74,45 @@ script continues streaming / checking status until:
 
 running `grbl-stream --help` displays the help text...
 
-    usage: grbl-stream [-h] [--quiet] [-d DEVICE] [-b BAUDRATE] [--disable-status]
-                       [--poll-interval POLL_INTERVAL] [--buffer-size BUFFER_SIZE]
-                       [--serial-log LOG_FILE] [--pending-count PENDING_COUNT]
-                       [--keep-open]
-                       infile
+    usage: grbl-stream [-h] [--settings SETTINGS_FILE] [--version] [--keep-open]
+                       [--nojog] [--split-gcodes] [-d SERIAL_DEVICE]
+                       [-b SERIAL_BAUDRATE] [--logfile LOG_FILE]
+                       [infile]
 
     GRBL gcode streamer for CNC machine. Assist jogging to position, then stream
     gcode via serial.
 
     positional arguments:
-      infile                gcode file to stream
+      infile                gcode file to stream, to use stdin specify as '-'
+                            (default: -). WARNING: If stdin (-) is used,
+                            interactive jogging is disabled
 
     optional arguments:
       -h, --help            show this help message and exit
-      --quiet, -q           if quiet, help messages won't be printed
+      --settings SETTINGS_FILE, -s SETTINGS_FILE
+                            settings json file (default: /home/nymphii/.grbl-
+                            stream.json)
+      --version, -v         display grbl-stream version and exit
+
+    Streaming Actions:
+      --keep-open, -o       if set, window won't close when job is done
+      --nojog               bypass jogging state; jump straight into streaming
+                            (note: this is always set if input is stdin)
+      --split-gcodes        multiple gcodes per line will be split and streamed in
+                            order of execution
 
     Serial Connectivity:
-      -d DEVICE, --device DEVICE
+      -d SERIAL_DEVICE, --device SERIAL_DEVICE
                             serial device GRBL is connected to, can use direct
                             device name (eg: /dev/ttyACM0) or the Arduino's serial
                             number (eg: 55639303235351C071B0)
-      -b BAUDRATE, --baudrate BAUDRATE
-                            serial baud rate (default: 115200)
+      -b SERIAL_BAUDRATE, --baudrate SERIAL_BAUDRATE
+                            serial baud rate
 
     Debug Parameters:
-      --disable-status      disables '?' being sent every '--poll-interval'
-      --poll-interval POLL_INTERVAL
-                            frequency of sending '?' for status report when status
-                            is enabled
-      --buffer-size BUFFER_SIZE
-                            GRBL internal serial buffer size
-      --serial-log LOG_FILE
-                            if given, data read from, and written to serial port
+      --logfile LOG_FILE    if given, data read from, and written to serial port
                             is logged here (note: \r and \n characters are escaped
                             for debugging purposes)
-      --pending-count PENDING_COUNT
-                            number of gcode lines to display ahead of them being
-                            sent
-      --keep-open, -o       if set, window won't close when job is done
 
 
 # Running on remote system (eg: Raspberry Pi)

@@ -128,6 +128,10 @@ class Config(object):
         if self.args.serial_log_file:
             self.args.serial_logging = True
 
+        # 'interactive_jogging' disabled if streaming from stdin:
+        if self.args.infile == '-':
+            self.args.interactive_jogging = False
+
     def __getattr__(self, key):
         # 1st preference: command-line argument
         arg_value = getattr(self.args, key, None)

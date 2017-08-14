@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import sys
 import curses
 import time
 import six
@@ -64,12 +65,19 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument(
-    'infile', help="gcode file to stream",
+    'infile', nargs='?', default='-',
+    help="gcode file to stream, to use stdin specify as '-' (default: -). "
+         "WARNING: If stdin (-) is used, interactive jogging is disabled",
 )
 
 parser.add_argument(
     '--settings', '-s', dest='settings_file', default=None,
     help="settings json file (default: %s)" % grblstream.settingsfile.DEFAULT_FILENAME,
+)
+parser.add_argument(
+    '--version', '-v',
+    action='store_const', const=True, default=False,
+    help="display grbl-stream version and exit",
 )
 
 # Action
@@ -82,7 +90,8 @@ group.add_argument(
 group.add_argument(
     '--nojog', dest='interactive_jogging',
     action='store_const', const=False, default=None,
-    help="bypass jogging state; jump straight into streaming",
+    help="bypass jogging state; jump straight into streaming (note: this is "
+         "always set if input is stdin)",
 )
 group.add_argument(
     '--split-gcodes', dest='split_gcodes',
@@ -117,6 +126,10 @@ group.add_argument(
 
 args = parser.parse_args()
 
+if args.version:
+    print(grblstream.__version__)
+    exit(0)
+
 # ----- Import Settings
 config = Config(args, args.settings_file)
 
@@ -146,7 +159,7 @@ def main(screen):
     )
     stream = grblstream.window.StreamWindow(
         screen=screen,
-        title='Stream: {}'.format(config.infile),
+        title='Stream: {}'.format('<stdin>' if config.infile == '-' else config.infile),
         min_height=min(6, config.stream_pending_count + 1),
     )
     accordion = grblstream.window.AccordionWindowManager(
@@ -154,13 +167,6 @@ def main(screen):
         windows=[init, jogging, stream],
         header_height=status.window.getmaxyx()[0],
     )
-
-    # dump first few lines into stream window
-    with open(config.infile, 'r') as fh:
-        for i in range(config.stream_pending_count):
-            line = fh.readline().rstrip()
-            stream.add_line(line)
-        stream.add_line('... [truncated]')
 
 
     # ----------------- Virtual Machine -----------------
@@ -471,43 +477,48 @@ def main(screen):
             status.refresh()
 
     if stream_file_flag:
-        with open(config.infile, 'r') as gcode_file:
-            gcode_file_moredata = True
-            while gcode_file_moredata:
-                # Push pending lines into streamer
-                while streamer.pending_count < config.stream_pending_count:
-                    # Line from file
-                    line_data = gcode_file.readline()
-                    if not line_data:
-                        gcode_file_moredata = False
-                        break  # file's done
+        gcode_instream = sys.stdin
+        if config.infile != '-':
+            gcode_instream = open(config.infile, 'r')
 
-                    # Break into multiple gcodes (if applicable)
-                    if config.split_gcodes:
-                        gcode_line = Line(line_data)
+        gcode_file_moredata = True
+        while gcode_file_moredata:
+            # Push pending lines into streamer
+            while streamer.pending_count < config.stream_pending_count:
+                # Line from file
+                line_data = gcode_instream.readline()
+                if not line_data:
+                    gcode_file_moredata = False
+                    break  # file's done
 
-                        if len(gcode_line.block) > 1:
-                            # full line (as comment; not sent over serial)
-                            send_gcode(line_data.strip(), stream, send=False)
-                            # individual gcodes
-                            gcode_list = copy.copy(sorted(gcode_line.block.gcodes))
-                            if gcode_line.block.modal_params:
-                                gcode_list.append(' '.join(str(w) for w in gcode_line.block.modal_params))
-                            for (i, gcode) in enumerate(gcode_list):  # sorts by execution order
-                                send_gcode(
-                                    gcode, stream,
-                                    tree_chr=curses.ACS_LTEE if ((i + 1) < len(gcode_list)) else curses.ACS_LLCORNER
-                                )
-                        else:
-                            # 0 or 1 gcodes found, just treat it like normal
-                            send_gcode(line_data.strip(), stream)
+                # Break into multiple gcodes (if applicable)
+                if config.split_gcodes:
+                    gcode_line = Line(line_data)
+
+                    if len(gcode_line.block) > 1:
+                        # full line (as comment; not sent over serial)
+                        send_gcode(line_data.strip(), stream, send=False)
+                        # individual gcodes
+                        gcode_list = copy.copy(sorted(gcode_line.block.gcodes))
+                        if gcode_line.block.modal_params:
+                            gcode_list.append(' '.join(str(w) for w in gcode_line.block.modal_params))
+                        for (i, gcode) in enumerate(gcode_list):  # sorts by execution order
+                            send_gcode(
+                                gcode, stream,
+                                tree_chr=curses.ACS_LTEE if ((i + 1) < len(gcode_list)) else curses.ACS_LLCORNER
+                            )
                     else:
+                        # 0 or 1 gcodes found, just treat it like normal
                         send_gcode(line_data.strip(), stream)
+                else:
+                    send_gcode(line_data.strip(), stream)
 
-                # process serial packets, then try again
-                poll_serial(0.05, _poll_callback_streaming)
+            # process serial packets, then try again
+            poll_serial(0.05, _poll_callback_streaming)
 
-                _check_resize()
+            _check_resize()
+
+        gcode_instream.close()
 
         # streamer is still:
         #   - sending gcodes to GRBL
