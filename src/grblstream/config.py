@@ -45,9 +45,10 @@ DEFAULT_SETTINGS = {
     #           https://github.com/gnea/grbl/wiki/Grbl-v1.1-Jogging
     #   - False: use standard gcodes for initial positioning (use for < v1.1)
     'use_grbl_jogging': True,
+    'grbl_jogging_feedrate': 1000,
 
     # --- Streaming
-    'stream_pending_count': 5,  # number of lines to show that haven't yet been sent over serial
+    'stream_pending_count': 2,  # number of lines to show that haven't yet been sent over serial
     'grbl_buffer_size': 128,  # only change if GRBL has been compiled with a different buffer size
     # split_gcodes:
     #   - False: simply stream each gcode line
@@ -65,6 +66,11 @@ DEFAULT_SETTINGS = {
     #   - halt stream (empty grbl buffer) and run termination sequence (eg: M5)
     #   - halt stream (empty grbl buffer) and re
     # Only works when split_gcodes is True
+    # WORKAROUND:
+    #   before this is done, you can use pygcode-norm to remove specific gcodes
+    #   for example:
+    #       $ pip install pygcode
+    #       $ pygcode-norm -rmg M6,G43 part.gcode > part.norm.gcode
 
 }
 

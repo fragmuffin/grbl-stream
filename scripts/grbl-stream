@@ -17,8 +17,9 @@ for pygcode_lib_type in ('installed_lib', 'relative_lib'):
         # pygcode
         import pygcode
         from pygcode import NullMachine
-        from pygcode import GCodeRapidMove
+        from pygcode import GCodeRapidMove, GCodeFeedRate, GCodeSet
         from pygcode import GCodeIncrementalDistanceMode
+        from pygcode import GCodeUseInches, GCodeUseMillimeters
         from pygcode import text2gcodes
         from pygcode import Line
 
@@ -40,6 +41,7 @@ for grblstream_lib_type in ('installed_lib', 'relative_lib'):
         # grblstream
         import grblstream
         from grblstream.window import keypress, using_curses
+        from grblstream.window import CPI_GOOD, CPI_ERROR, CPI_WARNING
         from grblstream.config import Config
         from grblstream.config import DEFAULT_FILENAME
         from grblstream.streamer import GCodeStreamException
@@ -78,7 +80,7 @@ group.add_argument(
     help="if set, window won't close when job is done",
 )
 group.add_argument(
-    '--nojogging', dest='interactive_jogging',
+    '--nojog', dest='interactive_jogging',
     action='store_const', const=False, default=None,
     help="bypass jogging state; jump straight into streaming",
 )
@@ -183,7 +185,18 @@ def main(screen):
         pos = lambda s: machine.Position(**dict(zip('XYZ', coords(s))))
         for (i, state_str) in enumerate(state_match.group('state').split('|')):
             if i == 0:
-                status.set_status(state_str)
+                # stat colour
+                color_index = 0
+                match = re.search(r'^(?P<state>[^:]*)', state_str)
+                if match.group('state').lower() in ['run', 'home']:
+                    color_index = CPI_GOOD
+                elif match.group('state').lower() in ['idle', 'sleep']:
+                    color_index = 0
+                elif match.group('state').lower() in ['check', 'jog', 'hold']:
+                    color_index = CPI_WARNING
+                elif match.group('state').lower() in ['alarm', 'door']:
+                    color_index = CPI_ERROR
+                status.set_status(state_str, color_index=color_index)
             elif state_str.startswith('MPos:'): # machine.abs_pos
                 abs_pos = pos(state_str)
             elif state_str.startswith('WPos:'): # machine.pos
@@ -342,6 +355,23 @@ def main(screen):
 
     stream_file_flag = True
 
+    # Identify Jogging unit
+    jogging_unit_class = {
+        'mm': GCodeUseMillimeters,
+        'inch': GCodeUseInches,
+        None: machine.mode.units.__class__,  # if not specified, default to machine's current mode
+    }[config.jogging_unit]
+
+    JOGGING_KEY_MAP = {
+        # <key>: (<axis>, <multiplier>, <widget_key>)
+        'KEY_RIGHT': ('X', 1, 'X+'),
+        'KEY_LEFT': ('X', -1, 'X-'),
+        'KEY_UP': ('Y', 1, 'Y+'),
+        'KEY_DOWN': ('Y', -1, 'Y-'),
+        'KEY_PPAGE': ('Z', 1, 'Z+'),
+        'KEY_NPAGE': ('Z', -1, 'Z-'),
+    }
+
     while config.interactive_jogging:
         k = keypress(screen)
 
@@ -356,31 +386,26 @@ def main(screen):
                 serialport.write('?')
 
             # Jogging Keys
-            elif k in ["KEY_RIGHT", "KEY_LEFT", "KEY_UP", "KEY_DOWN", "KEY_PPAGE", "KEY_NPAGE"]:
-                # put machine into incremental mode (if it's not already)
+            elif k in JOGGING_KEY_MAP:
+                # Change machine state put machine into incremental mode (if it's not already)
+                mode_gcodes = []
                 if not isinstance(machine.mode.distance, GCodeIncrementalDistanceMode):
-                    dist_mode = GCodeIncrementalDistanceMode()
-                    send_gcode(dist_mode, jogging)
-                    machine.process_gcodes(dist_mode)  # changes machine's mode
+                    mode_gcodes.append(GCodeIncrementalDistanceMode())
+                if not isinstance(machine.mode.units, jogging_unit_class):
+                    mode_gcodes.append(jogging_unit_class())
+                if mode_gcodes and (not config.use_grbl_jogging):
+                    send_gcode(' '.join(str(g) for g in mode_gcodes), jogging)
+                    machine.process_gcodes(*mode_gcodes)  # changes machine's mode
 
-                if k == "KEY_RIGHT":
-                    send_gcode(GCodeRapidMove(X=status.widgets['jog'].value), jogging)
-                    status.widgets['X+'].flash()
-                elif k == "KEY_LEFT":
-                    send_gcode(GCodeRapidMove(X=-status.widgets['jog'].value), jogging)
-                    status.widgets['X-'].flash()
-                elif k == "KEY_UP":
-                    send_gcode(GCodeRapidMove(Y=status.widgets['jog'].value), jogging)
-                    status.widgets['Y+'].flash()
-                elif k == "KEY_DOWN":
-                    send_gcode(GCodeRapidMove(Y=-status.widgets['jog'].value), jogging)
-                    status.widgets['Y-'].flash()
-                elif k == "KEY_PPAGE":
-                    send_gcode(GCodeRapidMove(Z=status.widgets['jog'].value), jogging)
-                    status.widgets['Z+'].flash()
-                elif k == "KEY_NPAGE":
-                    send_gcode(GCodeRapidMove(Z=-status.widgets['jog'].value), jogging)
-                    status.widgets['Z-'].flash()
+                # Map key to direction
+                (axis, multiplier, widget_key) = JOGGING_KEY_MAP[k]
+                jog_move = GCodeRapidMove(**{axis: multiplier * status.widgets['jog'].value})
+                if config.use_grbl_jogging:
+                    jog_codes = mode_gcodes + sorted(jog_move.params.values()) + [GCodeFeedRate(config.grbl_jogging_feedrate)]
+                    send_gcode('$J=' + ' '.join(str(g) for g in jog_codes), jogging)
+                else:
+                    send_gcode(jog_move, jogging)
+                status.widgets[widget_key].flash()
 
             # Jogging Increment (up/down)
             elif k in tuple('[]'):
@@ -423,11 +448,15 @@ def main(screen):
     mode_keys |= set(init_machine.mode.modal_groups.keys())
     mode_keys |= set(machine.mode.modal_groups.keys())
 
+    reset_mode_gcodes = []
     for key in mode_keys:
         initial = init_machine.mode.modal_groups[key]
         current = machine.mode.modal_groups[key]
         if initial != current:
-            send_gcode(initial, jogging)
+            reset_mode_gcodes.append(initial)
+
+    if reset_mode_gcodes:
+        send_gcode(' '.join(str(g) for g in reset_mode_gcodes), jogging)
 
 
     # ----------------- File Streaming -----------------
