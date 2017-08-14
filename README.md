@@ -70,6 +70,16 @@ script continues streaming / checking status until:
 - finally: machine's state is `Idle` (ensures CNC machine has completed tool path)
 
 
+### Error Handling
+
+If an error is returned in response to a streamed line, the `!` halt command is
+immediately sent.
+
+![grbl-stream script on error response](media/error.png)
+
+TODO: at the time of writing this, the script is unrecoverable, it just stops
+mid stream in the halted state (press _ctrl+C_ to exit)
+
 ## Command Line
 
 running `grbl-stream --help` displays the help text...
