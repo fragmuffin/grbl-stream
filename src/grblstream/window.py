@@ -11,7 +11,7 @@ from .widget import ConsoleLine, GCodeContent
 #   CPI: Colour Pair Index
 CPI_GOOD = 10
 CPI_ERROR = 11
-
+CPI_WARNING = 12
 
 def keypress(screen):
     key = None
@@ -58,6 +58,7 @@ def using_curses(func):
             # Set colour pallet
             curses.init_pair(CPI_GOOD, curses.COLOR_GREEN, -1)
             curses.init_pair(CPI_ERROR, curses.COLOR_RED, -1)
+            curses.init_pair(CPI_WARNING, curses.COLOR_YELLOW, -1)
 
             # Remove blinking cursor
             curses.curs_set(0)
@@ -125,12 +126,13 @@ class StatusWindow(object):
         for widget in self.widgets.values():
             widget.render()
 
-    def set_status(self, status):
+    def set_status(self, status, color_index=0):
         self.status = status
         self.banner.label = "{prefix}{label}".format(
             prefix=self.banner_prefix,
             label=status,
         )
+        self.banner.color_index = color_index
         self.refresh()
 
     @property

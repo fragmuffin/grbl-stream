@@ -78,23 +78,28 @@ class Button(Widget):
 class Banner(Widget):
     label_col = 4 # <space>text<space>
 
-    def __init__(self, window, label=None, row=0):
+    def __init__(self, window, label=None, row=0, color_index=0):
         self.window = window
         self._label = label
         self.row = row
+        self.color_index = color_index
         self.render()
 
     def render(self, strong=False):
         (y, x) = self.window.getmaxyx()
         label_str = " {} ".format(self._label)
-        hline_params = [0, 0, curses.ACS_HLINE, x]
-        addstr_params = [self.row, self.label_col, " {} ".format(self._label)]
-        if strong:
-            hline_params.append(curses.A_BOLD)
-            addstr_params.append(curses.A_BOLD)
+        addstr_params = [
+            self.row, self.label_col, " {} ".format(self._label),
+            curses.color_pair(self.color_index) if curses.has_colors() else 0
+        ]
 
-        self.window.hline(*hline_params)
-        self.window.addstr(*addstr_params)
+        # heading attributes
+        attrs = curses.color_pair(self.color_index) if curses.has_colors() else 0
+        if strong:
+            attrs |= curses.A_BOLD
+
+        self.window.hline(0, 0, curses.ACS_HLINE, x)
+        self.window.addstr(self.row, self.label_col, " {} ".format(self._label), attrs)
 
     @property
     def label(self):
