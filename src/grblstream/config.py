@@ -36,6 +36,7 @@ DEFAULT_SETTINGS = {
     'status_poll_interval': 0.25,  # 4Hz (unit: sec)
 
     # --- Jogging
+    'interactive_jogging': True,  # if set, user input will be required to position machine before streaming starts
     'jogging_unit': 'mm',  # {mm|inch}, if neither will default to 'mm'
     'jogging_values': [0.001, 0.01, 0.1, 1, 10, 25, 50, 100, 250, 500],
     'jogging_init_value': 0.001,  # must be one of the values above
@@ -52,11 +53,11 @@ DEFAULT_SETTINGS = {
     #   - False: simply stream each gcode line
     #   - True: split gcode lines into their individual gcodes. Transmit them
     #           in processing order outlined by the LinuxCNC guideline.
-    'split_gcodes': True,
+    'split_gcodes': False,
 
     # --- Error Handling (TODO)
     # Configure how to handle GRBL errors... namely:
-    #   20	Unsupported or invalid g-code command found in block.
+    #   20	Unsupported or invalid g-code command found in block. (eg: M6,G43,G98)
     #   22	Feed rate has not yet been set or is undefined
     #   33	The motion command has an invalid target (raised by arc codes)
     # Handling options: (brainstorming)

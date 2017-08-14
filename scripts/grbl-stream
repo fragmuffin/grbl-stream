@@ -7,6 +7,7 @@ import argparse
 import re
 import threading
 import serial
+from distutils.version import LooseVersion
 
 
 for pygcode_lib_type in ('installed_lib', 'relative_lib'):
@@ -14,10 +15,12 @@ for pygcode_lib_type in ('installed_lib', 'relative_lib'):
     # development path is attempted (done to make development easier)
     try:
         # pygcode
+        import pygcode
         from pygcode import NullMachine
         from pygcode import GCodeRapidMove
         from pygcode import GCodeIncrementalDistanceMode
         from pygcode import text2gcodes
+        from pygcode import Line
 
     except ImportError:
         # Add pygcode (relative to this test-path) to the system path
@@ -36,10 +39,10 @@ for grblstream_lib_type in ('installed_lib', 'relative_lib'):
     try:
         # grblstream
         import grblstream
-        from grblstream.window import keypress
+        from grblstream.window import keypress, using_curses
         from grblstream.config import Config
         from grblstream.config import DEFAULT_FILENAME
-
+        from grblstream.streamer import GCodeStreamException
 
     except ImportError:
         # Add pygcode (relative to this test-path) to the system path
@@ -63,13 +66,26 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--settings', '-s', dest='settings_file', default=None,
+    help="settings json file (default: %s)" % grblstream.settingsfile.DEFAULT_FILENAME,
+)
+
+# Action
+group = parser.add_argument_group("Streaming Actions")
+group.add_argument(
     '--keep-open', '-o', dest='keep_open',
     action='store_const', const=True, default=None,
     help="if set, window won't close when job is done",
 )
-parser.add_argument(
-    '--settings', '-s', dest='settings_file', default=None,
-    help="settings json file (default: %s)" % grblstream.settingsfile.DEFAULT_FILENAME,
+group.add_argument(
+    '--nojogging', dest='interactive_jogging',
+    action='store_const', const=False, default=None,
+    help="bypass jogging state; jump straight into streaming",
+)
+group.add_argument(
+    '--split-gcodes', dest='split_gcodes',
+    action='store_const', const=True, default=None,
+    help="multiple gcodes per line will be split and streamed in order of execution",
 )
 
 # Serial Connection
@@ -92,6 +108,10 @@ group.add_argument(
     help="if given, data read from, and written to serial port is logged here "
          "(note: \\r and \\n characters are escaped for debugging purposes)",
 )
+#group.add_argument(
+#    '--nocurses', dest='no_curses',
+#    action='store_const', const=True, default=False,
+#)
 
 args = parser.parse_args()
 
@@ -99,19 +119,11 @@ args = parser.parse_args()
 config = Config(args, args.settings_file)
 
 
-# ----------------- Curses Shi.. stuff -----------------
-def no_cursor(func):
-    def inner(screen):
-        try:
-            curses.curs_set(0)
-            return func(screen)
-        finally:
-            curses.curs_set(1)
-
-    return inner
-
-@no_cursor
-def curses_wrap(screen):
+# ----------------- Mainline -----------------
+# main() is called as soon as it's defined, this is necessary because it
+# uses a curses.wrapper (well, sort of, I made my own to be cleaner)
+@using_curses
+def main(screen):
 
     # ----------------- Initialise widgets 'n' stuff -----------------
     # Clear screen
@@ -281,7 +293,13 @@ def curses_wrap(screen):
                 # TODO: how to display messages
                 pass
             else:
-                streamer.process_response(line)
+                try:
+                    streamer.process_response(line)
+                except GCodeStreamException as e:
+                    serialport.write('!')  # Feed Hold
+                    #accordion.focus.insert_line('error!')
+                    #raise  # FIXME: error while streaming, option to retry?
+
                 if callback:
                     callback()
 
@@ -299,14 +317,14 @@ def curses_wrap(screen):
     # Connect GCode Streamer
     streamer = grblstream.streamer.GCodeStreamer(serialport, config.grbl_buffer_size)
 
-    def send_gcode(gcode, window):
-        widget = window.add_line(str(gcode))
+    def send_gcode(gcode, window, tree_chr=None, send=True):
+        widget = window.add_line(str(gcode), tree_chr=tree_chr)
         line = grblstream.streamer.GCodeStreamer.Line(str(gcode), widget)
-        if line: # don't send blank lines
+        if line and send: # don't send blank lines
             streamer.send(line)
 
     # ----------------- Interactive Jogging -----------------
-    if config.show_tips:
+    if config.show_tips and config.interactive_jogging:
         help_lines = [
             "; Jogging Keys",
             ";    - Arrow Keys: X/Y axes",
@@ -322,24 +340,16 @@ def curses_wrap(screen):
 
     screen.nodelay(True) # non-blocking .getkey() behaviour
 
-    def jog_value(cur_val, dindex):
-        try:
-            i = config.jogging_values.index(cur_val)
-        except ValueError:
-            i = 0
-        i = max(0, min(i + dindex, len(config.jogging_values) - 1))
-        return config.jogging_values[i]
-
     stream_file_flag = True
 
-    while True:
+    while config.interactive_jogging:
         k = keypress(screen)
 
         if k is None:
             pass  # nothing pressed; do nothing
         else:
             # Process key-press...
-            if k in ('q', 'Q'):
+            if k in tuple('qQ'):
                 stream_file_flag = False  # don't continue with stream
                 break
             elif k == '?':
@@ -373,23 +383,23 @@ def curses_wrap(screen):
                     status.widgets['Z-'].flash()
 
             # Jogging Increment (up/down)
-            elif k in ('[', ']', ',', '.'):
-                status.widgets['jog'].value = jog_value(
-                    status.widgets['jog'].value,
-                    {'[': 1, ',': 1, ']': -1, '.': -1}[k]
-                )
+            elif k in tuple('[]'):
+                cur_val = status.widgets['jog'].value
+                dindex = {'[': 1, ']': -1}[k]
+                try:
+                    i = config.jogging_values.index(cur_val)
+                except ValueError:
+                    i = 0
+                i = max(0, min(i + dindex, len(config.jogging_values) - 1))
+                status.widgets['jog'].value = config.jogging_values[i]
 
             # Zeroing Axes Offsets
             elif k == ' ':
-                # Zero WPos coordinates
-                send_gcode(text2gcodes('G10 L20 P1 X0 Y0 Z0')[0], jogging)
-            elif k in ('x', 'X'):
-                send_gcode(text2gcodes('G10 L20 P1 X0')[0], jogging)
-            elif k in ('y', 'Y'):
-                send_gcode(text2gcodes('G10 L20 P1 Y0')[0], jogging)
-            elif k in ('z', 'Z'):
-                send_gcode(text2gcodes('G10 L20 P1 Z0')[0], jogging)
-
+                # Zero WPos coordinates (all xyz)
+                send_gcode(GCodeSet(L=20, P=1, X=0, Y=0, Z=0), jogging)
+            elif k in tuple('xXyYzZ'):
+                # Zero WPos coordinate (single axis)
+                send_gcode(GCodeSet(L=20, P=1, **{k: 0}), jogging)
 
             # Jogging complete, begin stream
             elif k == '\n':
@@ -437,12 +447,33 @@ def curses_wrap(screen):
             while gcode_file_moredata:
                 # Push pending lines into streamer
                 while streamer.pending_count < config.stream_pending_count:
+                    # Line from file
                     line_data = gcode_file.readline()
                     if not line_data:
                         gcode_file_moredata = False
-                        break # file's done
+                        break  # file's done
 
-                    send_gcode(line_data.strip(), stream)
+                    # Break into multiple gcodes (if applicable)
+                    if config.split_gcodes:
+                        gcode_line = Line(line_data)
+
+                        if len(gcode_line.block) > 1:
+                            # full line (as comment; not sent over serial)
+                            send_gcode(line_data.strip(), stream, send=False)
+                            # individual gcodes
+                            gcode_list = copy.copy(sorted(gcode_line.block.gcodes))
+                            if gcode_line.block.modal_params:
+                                gcode_list.append(' '.join(str(w) for w in gcode_line.block.modal_params))
+                            for (i, gcode) in enumerate(gcode_list):  # sorts by execution order
+                                send_gcode(
+                                    gcode, stream,
+                                    tree_chr=curses.ACS_LTEE if ((i + 1) < len(gcode_list)) else curses.ACS_LLCORNER
+                                )
+                        else:
+                            # 0 or 1 gcodes found, just treat it like normal
+                            send_gcode(line_data.strip(), stream)
+                    else:
+                        send_gcode(line_data.strip(), stream)
 
                 # process serial packets, then try again
                 poll_serial(0.05, _poll_callback_streaming)
@@ -472,8 +503,9 @@ def curses_wrap(screen):
 
     if stream_file_flag:
         while config.keep_open:
-            if keypress(screen) in ('q', 'Q', '\n'):
+            if keypress(screen) in tuple('qQ\n'):
                 break
             time.sleep(0.1)
 
-curses.wrapper(curses_wrap)
+if __name__ == "__main__":
+    main()

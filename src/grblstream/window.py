@@ -5,6 +5,14 @@ from .widget import Banner, Button, NumberLabel, Label
 from .widget import ConsoleLine, GCodeContent
 
 
+# ================== curses Utilities ==================
+
+# Colour Pairs:
+#   CPI: Colour Pair Index
+CPI_GOOD = 10
+CPI_ERROR = 11
+
+
 def keypress(screen):
     key = None
     try:
@@ -15,64 +23,61 @@ def keypress(screen):
     return key
 
 
-class AccordionWindow(object):
-    """
-    A region of the screen that can push those above and below it around.
-    eg: as an active accordion window's content grows, it can push the window
-    below it down, and make it smaller.
-    """
+def using_curses(func):
+    def inner(*largs, **kwargs):
+        """
+        Calls decorated function with initial curses screen inserted as
+        first argument.
+        Content mostly taken from curses.wrapper, modified to function as a
+        decorator, and to introduce cursor removal
+        """
+        try:
+            # Initialize curses
+            stdscr = curses.initscr()
 
-    def __init__(self, screen, title, soft_height=2, min_height=0):
-        self.screen = screen
-        self.title = title
-        self.soft_height = soft_height
-        self.min_height = min_height
+            # Turn off echoing of keys, and enter cbreak mode,
+            # where no buffering is performed on keyboard input
+            curses.noecho()
+            curses.cbreak()
 
-        self.focus = False
-        self.lines = []  # list of ConsoleLine instances (first are at the top)
+            # In keypad mode, escape sequences for special keys
+            # (like the cursor keys) will be interpreted and
+            # a special value like curses.KEY_LEFT will be returned
+            stdscr.keypad(1)
 
-        self.window = None
-        self.banner = None
-        self.add_line_callback = None
+            # Start color, too.  Harmless if the terminal doesn't have
+            # color; user can test with has_color() later on.  The try/catch
+            # works around a minor bit of over-conscientiousness in the curses
+            # module -- the error return from C start_color() is ignorable.
+            try:
+                curses.start_color()
+                curses.use_default_colors()
+            except:
+                pass
 
-    def init_window(self, row, height):
-        self.window = curses.newwin(height, self.screen.getmaxyx()[1], row, 0)
-        self.banner = Banner(self.window, self.title)
+            # Set colour pallet
+            curses.init_pair(CPI_GOOD, curses.COLOR_GREEN, -1)
+            curses.init_pair(CPI_ERROR, curses.COLOR_RED, -1)
 
-    def _add_line(self, line):
-        i = len(self.lines)
-        self.lines.append(line)
-        if self.add_line_callback:
-            self.add_line_callback(self)
+            # Remove blinking cursor
+            curses.curs_set(0)
 
-    def move_window(self, row, height):
-        width = self.screen.getmaxyx()[1]
-        self.window.resize(height, width)
-        for line in self.lines:
-            line.update_width(width)
-        self.window.mvwin(row, 0)
-        #self.window.box()
-        #self.window.addstr(0, 5, self.title)
+            func(stdscr, *largs, **kwargs)
 
-    def render(self, active=False):
-        #self.window.clear()  # FIXME: start fresh every render?, inefficient
-        self.banner.render(strong=active)
-        (rows, cols) = self.window.getmaxyx()
-        if rows > 1: # we have room to render lines
-            for (i, line) in enumerate(self.lines[-(rows - 1):]):
-                line.render(i + 1)
-        self.refresh()
+        finally:
+            # Set everything back to normal
+            if 'stdscr' in locals():
+                curses.curs_set(1)
+                stdscr.keypad(0)
+                curses.echo()  # revert curses.noecho()
+                curses.nocbreak()  # revert curses.cbreak()
+                curses.endwin()
 
-    def __eq__(self, other):
-        return self.title == other.title
+    return inner
 
-    def refresh(self):
-        self.window.refresh()
 
-    def clear(self):
-        self.lines = []
-        self.window.clear()
 
+# ================== Status (header) Window ==================
 
 class StatusWindow(object):
     row = 0
@@ -134,6 +139,90 @@ class StatusWindow(object):
 
     def refresh(self):
         self.window.refresh()
+
+
+# ================== Accordion Windows ==================
+
+class AccordionWindow(object):
+    """
+    A region of the screen that can push those above and below it around.
+    eg: as an active accordion window's content grows, it can push the window
+    below it down, and make it smaller.
+    """
+
+    def __init__(self, screen, title, soft_height=2, min_height=0):
+        self.screen = screen
+        self.title = title
+        self.soft_height = soft_height
+        self.min_height = min_height
+
+        self.focus = False
+        self.lines = []  # list of ConsoleLine instances (first are at the top)
+
+        self.window = None
+        self.banner = None
+        self.add_line_callback = None
+
+    def init_window(self, row, height):
+        self.window = curses.newwin(height, self.screen.getmaxyx()[1], row, 0)
+        self.banner = Banner(self.window, self.title)
+
+    def _add_line(self, line):
+        i = len(self.lines)
+        self.lines.append(line)
+        if self.add_line_callback:
+            self.add_line_callback(self)
+
+    def move_window(self, row, height):
+        width = self.screen.getmaxyx()[1]
+        self.window.resize(height, width)
+        self.window.mvwin(row, 0)
+        #self.window.box()
+        #self.window.addstr(0, 5, self.title)
+
+    def render(self, active=False):
+        #self.window.clear()  # FIXME: start fresh every render?, inefficient
+        self.banner.render(strong=active)
+        (rows, cols) = self.window.getmaxyx()
+        if rows > 1: # we have room to render lines
+            for (i, line) in enumerate(self.lines[-(rows - 1):]):
+                line.render(i + 1)
+        self.refresh()
+
+    def __eq__(self, other):
+        return self.title == other.title
+
+    def refresh(self):
+        self.window.refresh()
+
+    def clear(self):
+        self.lines = []
+        self.window.clear()
+
+
+class InitWindow(AccordionWindow):
+    def add_line(self, text):
+        obj = ConsoleLine(self.window, text)
+        self._add_line(obj)
+        return obj
+
+
+class JoggingWindow(AccordionWindow):
+    def add_line(self, gcode, sent=False, status='', tree_chr=None):
+        obj = ConsoleLine(self.window, GCodeContent(
+            gcode=gcode, sent=sent, status=status, tree_chr=tree_chr
+        ))
+        self._add_line(obj)
+        return obj
+
+
+class StreamWindow(AccordionWindow):
+    def add_line(self, gcode, sent=False, status='', tree_chr=None):
+        obj = ConsoleLine(self.window, GCodeContent(
+            gcode=gcode, sent=sent, status=status, tree_chr=tree_chr
+        ))
+        self._add_line(obj)
+        return obj
 
 
 class AccordionWindowManager(object):
@@ -202,28 +291,3 @@ class AccordionWindowManager(object):
     def refresh(self):
         for w in self.windows:
             w.refresh()
-
-
-class InitWindow(AccordionWindow):
-    def add_line(self, text):
-        obj = ConsoleLine(self.window, text)
-        self._add_line(obj)
-        return obj
-
-
-class JoggingWindow(AccordionWindow):
-    def add_line(self, gcode, sent=False, status=''):
-        obj = ConsoleLine(self.window, GCodeContent(
-            gcode=gcode, sent=sent, status=status
-        ))
-        self._add_line(obj)
-        return obj
-
-
-class StreamWindow(AccordionWindow):
-    def add_line(self, gcode, sent=False, status=''):
-        obj = ConsoleLine(self.window, GCodeContent(
-            gcode=gcode, sent=sent, status=status
-        ))
-        self._add_line(obj)
-        return obj

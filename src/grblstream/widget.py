@@ -111,44 +111,83 @@ class Banner(Widget):
 #   info:   <'>' if cur> <info text>
 
 class GCodeContent(object):
-    def __init__(self, gcode, sent=False, status=''):
+    def __init__(self, gcode, sent=False, status='', tree_chr=None):
         self.gcode = gcode
         self.sent = sent
         self.status = status
+        self.tree_chr = tree_chr
 
-    def to_str(self, width):
-        gcode_w = max(0, width - 23)
-        return ("{gcode:<%i.%is} {sent} {status:<20s}" % (gcode_w, gcode_w)).format(
-            gcode=self.gcode,
-            sent='>' if self.sent else ' ',
-            status=self.status,
-        )
+    def to_render_list(self, index, width):
+        """
+        Return list of tuples, where each tuple contains:
+            column, string content, colour
+        """
+        # import .window for colour indexes
+        from .window import CPI_GOOD, CPI_ERROR
+
+        # status colour
+        status_color = 0
+        if 'ok' in self.status:
+            status_color = CPI_GOOD
+        elif 'error' in self.status:
+            status_color = CPI_ERROR
+
+        # Gcode string (tree structure prepended
+        gcode_w = max(0, width - (3 + 20))  # sent, status
+
+        # Render List (to return)
+        render_list = []
+        if self.tree_chr:
+            render_list.append((index + 1, self.tree_chr, 0))
+            render_list.append((index + 2, curses.ACS_HLINE, 0))
+            gcode_child_w = max(0, gcode_w - 4)
+            gcode_str = ("{:<%i.%is}" % (gcode_child_w, gcode_child_w)).format(self.gcode)
+            render_list.append((index + 4, gcode_str, 0))
+        else:
+            gcode_str = ("{:<%i.%is}" % (gcode_w, gcode_w)).format(self.gcode)
+            render_list.append((index, gcode_str, 0))
+        render_list.append((index + gcode_w + 1, '>' if self.sent else ' ', 0))
+        render_list.append((index + gcode_w + 3, "{:<20s}".format(self.status), status_color))
+
+        return render_list
+
 
 class ConsoleLine(Widget):
     def __init__(self, window, content, cur=False):
         self.window = window
         self.content = content
         self._cur = cur
-        self._width = 0
-        self.update_width()
 
     def render(self, row):
-        line = '> ' if self._cur else '  '
-        if isinstance(self.content, GCodeContent):
-            line += self.content.to_str(max(0, self._width - len(line)))
-        else:
-            line += str(self.content)
-        line = ("{:%i.%is}" % (self._width-1,self._width-1)).format(line)
-        try:
-            self.window.addstr(row, 0, line)
-        except curses.error:
-            raise RuntimeError("%i>%s<" % (row, line))
+        width = self.window.getmaxyx()[1]
 
-    def update_width(self, width=None):
-        if width is None: # get width from window
-            self._width = self.window.getmaxyx()[1]
+        # Create List of render parameters
+        render_list = [
+            (0, '> ' if self._cur else '  ', 0),
+        ]
+        if isinstance(self.content, GCodeContent):
+            render_list += self.content.to_render_list(2, max(0, width - 2))
         else:
-            self._width = width
+            render_list += [(2, str(self.content), 0)]
+
+        # Render content
+        for (col, content, color_index) in render_list:
+            if isinstance(content, int):
+                # render individual character (usually one of curses.ACS_*)
+                if col < width:
+                    self.window.addch(
+                        row, col, content,
+                        curses.color_pair(color_index) if curses.has_colors() else 0
+                    )
+
+            else: # content is assumed to be a string
+                ll = max(0, (width - 1) - col)  # line limit
+                s = ("{:%i.%is}" % (ll, ll)).format(content).encode('utf-8') if ll else ''  # string
+                if s:
+                    self.window.addstr(
+                        row, col, s,
+                        curses.color_pair(color_index) if curses.has_colors() else 0
+                    )
 
     @property
     def cur(self):
