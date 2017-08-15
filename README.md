@@ -45,6 +45,7 @@ It is not mature enough yet to work effectively that way.
 * tests
 * recovery options for `error` responses to gcodes
 * display messages such as `[MSG:...]
+* progress bar
 
 
 # Install
