@@ -2,10 +2,11 @@
 
 Command-line GRBL streaming script
 
-**Focus**
 
-The primary focus for `grbl-stream` is a **robust** link from the intended tool path to your CNC machine.
+## Focus
 
+The primary focus for `grbl-stream` is for it to be a **robust** and **reliable**
+link between your CAM software to your CNC hardware.
 
 This project started with my CNC machine occasionally returning errors on gcodes
 unpredictably, then continuing with the next g-code... so I thought... "can't
@@ -16,20 +17,51 @@ and `grbl-stream` was born. (also: I was unemployed, bored, and sick of playing
 games, so that helped)
 
 
-**Limitations**
+## Limitations
 
 - a bit buggy at the moment (currently in pre-alpha), which is directly contrary to the primary vision for this streamer.
 - won't work on Windows as is (`TODO`: there's a `curses` port for _MS DOS emulation_ (or whatever it's evolved into) called `UniCurses` which may work without much effort)
 
 
+## TODO (before release)
+
+I'm not comfortable releasing this on PyPi just yet (although that's the intention later).
+
+This is because although I'm happy with the way it's streaming, it's `curses`
+implementation is not _robust_ or _reliable_ which directly contradicts the
+intent of this script (eg: resizing it can crash the script, or just mess with
+rendering)
+
+Also, `grblstream` as a python library should be able to be imported into other's
+projects so they may make their own streamers with their own focus.
+It is not mature enough yet to work effectively that way.
+
+* re-build `curses` implementation to be robust
+* allow to be run in non-curses mode (perfect for debugging)... (treat `curses`
+  as more of a UI abstraction when re-designing implementation)
+* `import grblstream` example as simple streamer
+* more graceful common error-handling (eg: GRBL device not found)
+* tests
+
+
 # Install
 
-Install using `pip`
+Not deployed to PyPi yet, so clone (or download) this repository, and run the
+script directly form the `./scripts/` folder.
 
-    pip install grbl-stream
+   $ git clone git@github.com:fragmuffin/grbl-stream.git
+   $ cd grbl-stream/scripts
+   $ ./grbl-stream ~/your_file.gcode
 
-or install directly from PyPi website: https://pypi.python.org/pypi/grbl-stream
+## Pre-requisites
 
+Python (and pip)
+
+    $ sudo apt install python python-pip
+
+You'll also need a few python libraries before `grbl-stream` will work:
+
+    $ pip install argparse pyserial six "pygcode>=0.1.2"
 
 # Usage
 
