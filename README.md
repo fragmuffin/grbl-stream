@@ -40,6 +40,7 @@ It is not mature enough yet to work effectively that way.
 * allow to be run in non-curses mode (perfect for debugging)... (treat `curses`
   as more of a UI abstraction when re-designing implementation)
 * `import grblstream` example as simple streamer
+* add footer with available interaction options (key bindings)
 * more graceful common error-handling (eg: GRBL device not found)
 * tests
 
