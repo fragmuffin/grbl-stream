@@ -50,9 +50,9 @@ It is not mature enough yet to work effectively that way.
 Not deployed to PyPi yet, so clone (or download) this repository, and run the
 script directly form the `./scripts/` folder.
 
-   $ git clone git@github.com:fragmuffin/grbl-stream.git
-   $ cd grbl-stream/scripts
-   $ ./grbl-stream ~/your_file.gcode
+    $ git clone git@github.com:fragmuffin/grbl-stream.git
+    $ cd grbl-stream/scripts
+    $ ./grbl-stream ~/your_file.gcode
 
 ## Pre-requisites
 
