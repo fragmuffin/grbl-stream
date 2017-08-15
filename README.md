@@ -43,6 +43,8 @@ It is not mature enough yet to work effectively that way.
 * add footer with available interaction options (key bindings)
 * more graceful common error-handling (eg: GRBL device not found)
 * tests
+* recovery options for `error` responses to gcodes
+* display messages such as `[MSG:...]
 
 
 # Install
