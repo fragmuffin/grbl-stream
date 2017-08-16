@@ -24,7 +24,7 @@ __copyright__ = "Copyright (c) 2017 {0}".format(__author__)
 __all__ = [
     # modules
     'arduino_tools',
-    'settingsfile',
+    'config',
     'streamer',
     'widget',
     'window',
@@ -33,7 +33,7 @@ __all__ = [
 
 # modules
 import arduino_tools
-import settingsfile
+import config
 import streamer
 import widget
 import window
