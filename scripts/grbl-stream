@@ -72,7 +72,7 @@ parser.add_argument(
 
 parser.add_argument(
     '--settings', '-s', dest='settings_file', default=None,
-    help="settings json file (default: %s)" % grblstream.settingsfile.DEFAULT_FILENAME,
+    help="settings json file (default: %s)" % grblstream.config.DEFAULT_FILENAME,
 )
 parser.add_argument(
     '--version', '-v',
